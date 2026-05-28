@@ -109,6 +109,7 @@ static int run_server( const char* desired_ip,
                        const std::string& command_path,
                        char* command_argv[],
                        const int colors,
+                       const bool truecolor,
                        unsigned int verbose,
                        bool with_motd );
 
@@ -125,7 +126,7 @@ static void print_version( FILE* file )
 static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
-           "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE] [-- COMMAND...]\n",
+           "Usage: %s new [-s] [-v] [-T] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE] [-- COMMAND...]\n",
            argv0 );
 }
 
@@ -189,6 +190,7 @@ int main( int argc, char* argv[] )
   std::string command_path;
   char** command_argv = NULL;
   int colors = 0;
+  bool truecolor = false;
   unsigned int verbose = 0; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
@@ -216,7 +218,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:T" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -253,6 +255,9 @@ int main( int argc, char* argv[] )
           break;
         case 'v':
           verbose++;
+          break;
+        case 'T':
+          truecolor = true;
           break;
         case 'l':
           locale_vars.push_back( std::string( optarg ) );
@@ -372,7 +377,7 @@ int main( int argc, char* argv[] )
   }
 
   try {
-    return run_server( desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd );
+    return run_server( desired_ip, desired_port, command_path, command_argv, colors, truecolor, verbose, with_motd );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
     return 1;
@@ -387,6 +392,7 @@ static int run_server( const char* desired_ip,
                        const std::string& command_path,
                        char* command_argv[],
                        const int colors,
+                       const bool truecolor,
                        unsigned int verbose,
                        bool with_motd )
 {
@@ -575,6 +581,16 @@ static int run_server( const char* desired_ip,
     if ( setenv( "TERM", ( colors == 256 ) ? color_term : default_term, true ) < 0 ) {
       perror( "setenv" );
       exit( 1 );
+    }
+
+    /* Signal 24-bit color capability when the client supports it.
+       The convention is xterm-256color + COLORTERM=truecolor rather than
+       xterm-direct, which breaks apps that treat `colors` as a small int. */
+    if ( truecolor ) {
+      if ( setenv( "COLORTERM", "truecolor", true ) < 0 ) {
+        perror( "setenv" );
+        exit( 1 );
+      }
     }
 
     /* ask ncurses to send UTF-8 instead of ISO 2022 for line-drawing chars */

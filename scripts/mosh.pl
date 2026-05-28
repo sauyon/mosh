@@ -378,6 +378,12 @@ if ( $pid == 0 ) { # child
 
   push @server, ( '-c', $colors );
 
+  # Signal truecolor capability so the server sets COLORTERM=truecolor.
+  if ( defined $ENV{ 'COLORTERM' }
+       && ( $ENV{ 'COLORTERM' } eq 'truecolor' || $ENV{ 'COLORTERM' } eq '24bit' ) ) {
+    push @server, '-T';
+  }
+
   push @server, @bind_arguments;
 
   if ( defined $port_request ) {
