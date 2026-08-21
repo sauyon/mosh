@@ -109,6 +109,7 @@ static int run_server( const char* desired_ip,
                        const std::string& command_path,
                        char* command_argv[],
                        const int colors,
+                       const bool truecolor,
                        unsigned int verbose,
                        bool with_motd );
 
@@ -189,6 +190,7 @@ int main( int argc, char* argv[] )
   std::string command_path;
   char** command_argv = NULL;
   int colors = 0;
+  bool truecolor = false;
   unsigned int verbose = 0; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
@@ -255,8 +257,7 @@ int main( int argc, char* argv[] )
           verbose++;
           break;
         case 'T':
-          /* Accepted for compatibility with clients that pass it. The COLORTERM
-             signal below is unconditional now, so this is a no-op. */
+          truecolor = true;
           break;
         case 'l':
           locale_vars.push_back( std::string( optarg ) );
@@ -376,7 +377,7 @@ int main( int argc, char* argv[] )
   }
 
   try {
-    return run_server( desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd );
+    return run_server( desired_ip, desired_port, command_path, command_argv, colors, truecolor, verbose, with_motd );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
     return 1;
@@ -391,6 +392,7 @@ static int run_server( const char* desired_ip,
                        const std::string& command_path,
                        char* command_argv[],
                        const int colors,
+                       const bool truecolor,
                        unsigned int verbose,
                        bool with_motd )
 {
@@ -581,24 +583,14 @@ static int run_server( const char* desired_ip,
       exit( 1 );
     }
 
-    /* Signal 24-bit color capability. This is unconditional because it is a
-       statement about mosh itself, not about the client's outer terminal:
-       Renditions stores packed RGB (true_color_mask) and Renditions::sgr()
-       emits ";38;2;r;g;b" whenever a cell holds a true color, regardless of the
-       negotiated -c value -- which is only ever read to pick the TERM string
-       above. So every mosh session is 24-bit capable.
-
-       Gating this on -T made a universally-true statement depend on which
-       client wrapper connected: scripts/mosh.pl only passes -T when COLORTERM
-       is already set client-side, and clients with a native mosh
-       implementation (e.g. Blink) never pass it at all and under-report -c 256.
-       Those sessions lost truecolor that mosh was delivering anyway.
-
+    /* Signal 24-bit color capability when the client supports it.
        The convention is xterm-256color + COLORTERM=truecolor rather than
        xterm-direct, which breaks apps that treat `colors` as a small int. */
-    if ( setenv( "COLORTERM", "truecolor", true ) < 0 ) {
-      perror( "setenv" );
-      exit( 1 );
+    if ( truecolor ) {
+      if ( setenv( "COLORTERM", "truecolor", true ) < 0 ) {
+        perror( "setenv" );
+        exit( 1 );
+      }
     }
 
     /* ask ncurses to send UTF-8 instead of ISO 2022 for line-drawing chars */
